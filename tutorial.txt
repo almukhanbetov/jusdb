@@ -1,0 +1,24 @@
+go install github.com/pressly/goose/v3/cmd/goose@latest
+mkdir -p migrations
+goose -dir migrations -s create init sql
+
+goose -dir ./migrations postgres "postgres://postgres:Zxcvbnm123@localhost:5432/jusdb?sslmode=disable" up-by-one
+goose -dir ./migrations postgres "postgres://postgres:Zxcvbnm123@localhost:5432/jusdb?sslmode=disable" up-by-one
+goose -dir ./migrations postgres "postgres://postgres:Zxcvbnm123@localhost:5432/jusdb?sslmode=disable" up-by-one
+
+goose -dir ./migrations postgres "postgres://postgres:Zxcvbnm123@localhost:5432/jusdb?sslmode=disable" status
+
+goose -dir ./migrations postgres "postgres://postgres:PASS@localhost:5432/uibirzhasi?sslmode=disable" down            Откат последней миграции
+goose -dir ./migrations postgres "postgres://postgres:PASS@localhost:5432/uibirzhasi?sslmode=disable" down-to 1       Откатить до версии 00001
+
+goose -dir ./migrations postgres "postgres://postgres:PASS@localhost:5432/DBNAME?sslmode=disable" <команда>           Применить все новые миграции
+goose up
+goose up-by-one                                                                                                       Применить только одну следующую миграцию
+goose down                                                                                                            Откатить одну последнюю миграцию
+goose down-to 1                                                                                                       Откатить до определённой версии (по номеру)      
+goose up-to 2                                                                                                         Применить миграции до конкретной версии
+goose redo                                                                                                            Перезапустить последнюю миграцию (down + up)
+goose reset                                                                                                           Полный сброс (откатить все миграции)
+goose status
+
+
