@@ -70,8 +70,8 @@ jobs:
 
       - name: Deploy ClusterIssuer (Let's Encrypt)
         run: kubectl apply --validate=false -f k8s/cluster-issuer.yaml
-        # Подключаем ClusterIssuer для автоматического выпуска сертификатов
 
+        # Подключаем ClusterIssuer для автоматического выпуска сертификатов
       - name: Deploy Postgres (only if not exists)
         run: |                            # Поднимаем Postgres, если его нет
           if ! kubectl get statefulset postgres -n default >/dev/null 2>&1; then
@@ -98,13 +98,24 @@ jobs:
           for pod in $(kubectl get pods -n default -l job-name=jusdb-migrate -o jsonpath='{.items[*].metadata.name}'); do
             kubectl delete pod -n default $pod --ignore-not-found || true
           done
-           
-      - name: Run migrations Job          # Запускаем миграции
+      - name: Run migrations Job
         run: |
           kubectl apply -f k8s/migrate.yaml
-          echo "⏳ Waiting for migration pod..."
-          kubectl wait --for=condition=Ready pod -l job-name=jusdb-migrate -n default --timeout=600s
-          kubectl logs -n default -l job-name=jusdb-migrate --tail=100  
+          echo "⏳ Waiting for migrations to complete..."
+          if ! kubectl wait --for=condition=complete job/jusdb-migrate -n default --timeout=600s; then
+            echo "❌ Migration job failed. Logs:"
+            kubectl logs -n default -l job-name=jusdb-migrate --tail=100 || true
+            exit 1
+          fi
+          echo "✅ Migration completed successfully"
+          kubectl logs -n default -l job-name=jusdb-migrate --tail=100
+   
+      # - name: Run migrations Job          # Запускаем миграции
+      #   run: |
+      #     kubectl apply -f k8s/migrate.yaml
+      #     echo "⏳ Waiting for migration pod..."
+      #     kubectl wait --for=condition=Ready pod -l job-name=jusdb-migrate -n default --timeout=600s
+      #     kubectl logs -n default -l job-name=jusdb-migrate --tail=100  
      
 
       # - name: Run migrations Job
