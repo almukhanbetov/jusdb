@@ -98,17 +98,25 @@ jobs:
           for pod in $(kubectl get pods -n default -l job-name=jusdb-migrate -o jsonpath='{.items[*].metadata.name}'); do
             kubectl delete pod -n default $pod --ignore-not-found || true
           done
-       # --- Запускаем миграции ---
-      - name: Run migrations Job
+           
+      - name: Run migrations Job          # Запускаем миграции
         run: |
           kubectl apply -f k8s/migrate.yaml
-          echo "⏳ Ждём выполнения миграций..."
-          if ! kubectl wait --for=condition=complete job/jusdb-migrate -n default --timeout=600s; then
-            echo "❌ Migration job failed. Logs:"
-            kubectl logs -n default job/jusdb-migrate || true
-            exit 1
-          fi
-          echo "✅ Миграции выполнены."
+          echo "⏳ Waiting for migration pod..."
+          kubectl wait --for=condition=Ready pod -l job-name=jusdb-migrate -n default --timeout=600s
+          kubectl logs -n default -l job-name=jusdb-migrate --tail=100  
+     
+
+      # - name: Run migrations Job
+      #   run: |
+      #     kubectl apply -f k8s/migrate.yaml
+      #     echo "⏳ Ждём выполнения миграций..."
+      #     if ! kubectl wait --for=condition=complete job/jusdb-migrate -n default --timeout=600s; then
+      #       echo "❌ Migration job failed. Logs:"
+      #       kubectl logs -n default job/jusdb-migrate || true
+      #       exit 1
+      #     fi
+      #     echo "✅ Миграции выполнены."
     #   - name: Run migrations Job
     #     run: |                            # Запускаем миграции через Job
     #       kubectl apply -f k8s/migrate.yaml
