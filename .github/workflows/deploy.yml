@@ -109,6 +109,24 @@ jobs:
           fi
           echo "✅ Migration completed successfully"
           kubectl logs -n default -l job-name=jusdb-migrate --tail=100
+          
+      - name: Run migrations Job
+        run: |
+          # Запускаем Job для миграций
+          kubectl apply -f k8s/migrate.yaml
+
+          echo "⏳ Waiting for migrations to complete..."
+
+          # Ждём завершения Job (Complete или Fail)
+          if ! kubectl wait --for=condition=complete job/jusdb-migrate -n default --timeout=600s; then
+            echo "❌ Migration job failed. Showing logs..."
+            kubectl logs -n default -l job-name=jusdb-migrate --tail=100 || true
+            exit 1
+          fi
+
+          echo "✅ Migration completed successfully. Logs:"
+          kubectl logs -n default -l job-name=jusdb-migrate --tail=100
+          
    
       # - name: Run migrations Job          # Запускаем миграции
       #   run: |
