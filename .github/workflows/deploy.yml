@@ -47,7 +47,6 @@ jobs:
           cat > "$HOME/.kube/config" <<'EOF'
           ${{ secrets.KUBECONFIG }}
           EOF
-
     #   - name: Install cert-manager
     #     run: |                            # Устанавливаем cert-manager (для TLS)
     #         helm repo add jetstack https://charts.jetstack.io
@@ -99,22 +98,32 @@ jobs:
           for pod in $(kubectl get pods -n default -l job-name=jusdb-migrate -o jsonpath='{.items[*].metadata.name}'); do
             kubectl delete pod -n default $pod --ignore-not-found || true
           done
-
+       # --- Запускаем миграции ---
       - name: Run migrations Job
-        run: |                            # Запускаем миграции через Job
+        run: |
           kubectl apply -f k8s/migrate.yaml
-          echo "⏳ Waiting for migrations to complete..."
+          echo "⏳ Ждём выполнения миграций..."
           if ! kubectl wait --for=condition=complete job/jusdb-migrate -n default --timeout=600s; then
-            echo "❌ Migration job did not complete. Showing logs from all pods..."
-            for pod in $(kubectl get pods -n default -l job-name=jusdb-migrate -o jsonpath='{.items[*].metadata.name}'); do
-              echo "🔹 Logs from pod: $pod"
-              kubectl logs -n default $pod || true
-              echo "--------------------------------------"
-            done
+            echo "❌ Migration job failed. Logs:"
+            kubectl logs -n default job/jusdb-migrate || true
             exit 1
           fi
-          echo "✅ Migration job completed successfully."
-          kubectl delete job jusdb-migrate -n default --ignore-not-found
+          echo "✅ Миграции выполнены."
+    #   - name: Run migrations Job
+    #     run: |                            # Запускаем миграции через Job
+    #       kubectl apply -f k8s/migrate.yaml
+    #       echo "⏳ Waiting for migrations to complete..."
+    #       if ! kubectl wait --for=condition=complete job/jusdb-migrate -n default --timeout=600s; then
+    #         echo "❌ Migration job did not complete. Showing logs from all pods..."
+    #         for pod in $(kubectl get pods -n default -l job-name=jusdb-migrate -o jsonpath='{.items[*].metadata.name}'); do
+    #           echo "🔹 Logs from pod: $pod"
+    #           kubectl logs -n default $pod || true
+    #           echo "--------------------------------------"
+    #         done
+    #         exit 1
+    #       fi
+    #       echo "✅ Migration job completed successfully."
+    #       kubectl delete job jusdb-migrate -n default --ignore-not-found
 
       - name: Deploy App (Deployment + Service + Ingress)
         run: kubectl apply -f k8s/jusdb.yaml

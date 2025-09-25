@@ -8,7 +8,7 @@ type: Opaque                        # Тип секрета — произвол
 stringData:                         # Поле для хранения строк (kubectl сам преобразует в base64)
   POSTGRES_USER: postgres           # Логин для БД
   POSTGRES_PASSWORD: Zxcvbnm123     # Пароль для БД
-  POSTGRES_DB: jusdb           # Имя базы данных
+  POSTGRES_DB: jusdb                # Имя базы данных
 ---
 # ====================== StatefulSet ======================
 apiVersion: apps/v1                 # API для StatefulSet

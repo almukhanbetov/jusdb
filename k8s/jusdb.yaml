@@ -8,7 +8,6 @@ type: Opaque                           # Тип "произвольные дан
 stringData:                            # Данные в виде строки
   DATABASE_URL: "postgres://postgres:Zxcvbnm123@postgres:5432/jusdb?sslmode=disable"
   # Строка подключения к Postgres (логин, пароль, хост, порт, БД)
-
 ---
 # ====================== Deployment ======================
 apiVersion: apps/v1                    # API версия для Deployment
@@ -37,7 +36,6 @@ spec:
                 secretKeyRef:
                   name: jusdb-db-secret # Берём значение из секрета
                   key: DATABASE_URL
-
           # Проба готовности (подключение к Pod готово)
           readinessProbe:
             httpGet:
@@ -46,7 +44,6 @@ spec:
             initialDelaySeconds: 5     # Подождать 5 сек перед первой проверкой
             periodSeconds: 10          # Проверять каждые 10 сек
             failureThreshold: 3        # После 3 неудачных попыток Pod считается not ready
-
           # Проба живости (если Pod завис — Kubernetes его перезапустит)
           livenessProbe:
             httpGet:
@@ -55,7 +52,6 @@ spec:
             initialDelaySeconds: 15    # Ждём 15 сек перед первой проверкой
             periodSeconds: 20          # Проверяем каждые 20 сек
             failureThreshold: 3        # После 3 неудач Pod будет перезапущен
-
 ---
 # ====================== Service ======================
 apiVersion: v1
