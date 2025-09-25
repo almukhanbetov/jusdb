@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: jusdb
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Zxcvbnm123
+      POSTGRES_DB: jusdb
+    ports:
+      - "5434:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d jusdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  goose:
+    image: golang:1.24-alpine
+    container_name: goose_migrator
+    depends_on:
+      db:
+        condition: service_healthy
+    working_dir: /app
+    volumes:
+      - .:/app
+    entrypoint: ["/bin/sh", "-c"]
+    command: ./migrate.sh
+
+  app:
+    build: .
+    container_name: jusdb_app
+    depends_on:
+      goose:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: "postgres://postgres:Zxcvbnm123@db:5432/jusdb?sslmode=disable"
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+
+volumes:
+  db_data:

@@ -1,0 +1,25 @@
+# --- build stage ---
+FROM golang:1.24-alpine AS build
+WORKDIR /app
+
+# зависимости
+COPY go.mod go.sum ./
+RUN go mod download
+
+# установим goose
+RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+
+# скопируем код
+COPY . .
+RUN go build -o main .
+
+# --- run stage ---
+FROM alpine:3.18
+WORKDIR /app
+
+# добавим goose и бинарь приложения
+COPY --from=build /go/bin/goose /usr/local/bin/goose
+COPY --from=build /app/main .
+
+EXPOSE 8080
+CMD ["./main"]

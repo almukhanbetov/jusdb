@@ -21,4 +21,5 @@ goose redo                                                                      
 goose reset                                                                                                           Полный сброс (откатить все миграции)
 goose status
 
-
+docker exec -it jusdb psql -U postgres -d jusdb
+docker exec -it jusdb psql -U postgres -d jusdb -c "\dt"

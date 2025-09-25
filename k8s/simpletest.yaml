@@ -1,0 +1,99 @@
+# ====================== Secret ======================
+apiVersion: v1                         # API версия для Secret
+kind: Secret                           # Ресурс Secret
+metadata:
+  name: jusdb-db-secret           # Имя секрета
+  namespace: default                   # Namespace, где будет создан
+type: Opaque                           # Тип "произвольные данные"
+stringData:                            # Данные в виде строки
+  DATABASE_URL: "postgres://postgres:Zxcvbnm123@postgres:5432/jusdb?sslmode=disable"
+  # Строка подключения к Postgres (логин, пароль, хост, порт, БД)
+
+---
+# ====================== Deployment ======================
+apiVersion: apps/v1                    # API версия для Deployment
+kind: Deployment                       # Ресурс Deployment
+metadata:
+  name: jusdb                     # Имя деплоймента
+  namespace: default
+spec:
+  replicas: 1                          # Количество Pod'ов (можно масштабировать)
+  selector:
+    matchLabels:
+      app: jusdb                  # Метка для поиска Pod'ов
+  template:
+    metadata:
+      labels:
+        app: jusdb                # Метка для Pod'ов
+    spec:
+      containers:
+        - name: app                    # Имя контейнера
+          image: almuko/jusdb:latest   # Docker-образ из Docker Hub
+          ports:
+            - containerPort: 8080      # Порт, который слушает приложение внутри Pod
+          env:
+            - name: DATABASE_URL       # Подключаем переменную окружения DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: jusdb-db-secret # Берём значение из секрета
+                  key: DATABASE_URL
+
+          # Проба готовности (подключение к Pod готово)
+          readinessProbe:
+            httpGet:
+              path: /health            # Проверяем эндпоинт /health
+              port: 8080               # На порту 8080
+            initialDelaySeconds: 5     # Подождать 5 сек перед первой проверкой
+            periodSeconds: 10          # Проверять каждые 10 сек
+            failureThreshold: 3        # После 3 неудачных попыток Pod считается not ready
+
+          # Проба живости (если Pod завис — Kubernetes его перезапустит)
+          livenessProbe:
+            httpGet:
+              path: /health            # Проверка того же эндпоинта /health
+              port: 8080
+            initialDelaySeconds: 15    # Ждём 15 сек перед первой проверкой
+            periodSeconds: 20          # Проверяем каждые 20 сек
+            failureThreshold: 3        # После 3 неудач Pod будет перезапущен
+
+---
+# ====================== Service ======================
+apiVersion: v1
+kind: Service
+metadata:
+  name: jusdb                     # Имя сервиса
+  namespace: default
+spec:
+  selector:
+    app: jusdb                    # Привязываем сервис к Pod'ам с меткой app=jusdb
+  ports:
+    - port: 80                         # Порт сервиса (для ingress)
+      targetPort: 8080                  # Пробрасываем на порт Pod'а (контейнер слушает 8080)
+  type: ClusterIP                       # Сервис доступен только внутри кластера
+
+---
+# ====================== Ingress ======================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jusdb-ingress             # Имя Ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: traefik   # Используем Traefik ingress-controller
+    cert-manager.io/cluster-issuer: letsencrypt-prod # Cert-manager для TLS сертификатов
+spec:
+  tls:                                 # TLS сертификат для HTTPS
+    - hosts:
+        - jusdb.compnet.kz        # Домен для приложения
+      secretName: jusdb-tls       # Секрет, куда cert-manager положит сертификат
+  rules:                               # Правила маршрутизации
+    - host: jusdb.compnet.kz
+      http:
+        paths:
+          - path: /                    # Все запросы по /
+            pathType: Prefix
+            backend:
+              service:
+                name: jusdb       # Отправляем в сервис jusdb
+                port:
+                  number: 80           # На его порт 80

@@ -54,12 +54,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 -- +goose StatementEnd
-
 CREATE TRIGGER trg_check_matches_for_request
 AFTER INSERT ON buy_requests
 FOR EACH ROW
 EXECUTE FUNCTION check_matches_for_request();
-
 ---------------------------------------------------
 -- 🔹 Уведомления при совпадении
 ---------------------------------------------------
@@ -75,19 +73,16 @@ BEGIN
     INTO seller_id, listing_desc
     FROM listings l
     WHERE l.id = NEW.listing_id;
-
     SELECT br.user_id
     INTO buyer_id
     FROM buy_requests br
     WHERE br.id = NEW.request_id;
-
     INSERT INTO notifications (user_id, message, created_at)
     VALUES (
         seller_id,
         '🔔 Ваш объект "' || listing_desc || '" совпал с запросом покупателя!',
         now()
     );
-
     INSERT INTO notifications (user_id, message, created_at)
     VALUES (
         buyer_id,

@@ -1,0 +1,16 @@
+apiVersion: cert-manager.io/v1              # Используем API cert-manager (ресурсы ClusterIssuer/Issuer)
+kind: ClusterIssuer                         # Тип ресурса — ClusterIssuer (глобальный для всего кластера)
+metadata:
+  name: letsencrypt-prod                    # Имя ClusterIssuer (будет использоваться в аннотациях ingress)
+spec:
+  acme:                                     # Используем ACME-протокол (Let's Encrypt)
+    email: almuko.m@gmail.com               # Email для регистрации в Let's Encrypt (важно! нужен рабочий)
+    server: https://acme-v02.api.letsencrypt.org/directory  
+                                            # Адрес production-сервера Let's Encrypt (боевой, не staging)
+    privateKeySecretRef:
+      name: letsencrypt-prod                # Секрет, где cert-manager сохранит приватный ключ аккаунта
+    solvers:                                # Методы проверки домена (чтобы Let's Encrypt удостоверился, что вы владеете доменом)
+      - http01:                             # Проверка через HTTP-01 challenge
+          ingress:
+            class: traefik                  # cert-manager будет использовать ingress-контроллер Traefik для выдачи challenge
+

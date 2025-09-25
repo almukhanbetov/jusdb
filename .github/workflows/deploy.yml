@@ -1,0 +1,146 @@
+# ====================== CI/CD Deploy jusdb ======================
+name: CI/CD Deploy jusdb             # Название пайплайна (видно в GitHub Actions)
+on:
+  push:
+    branches: [ "main" ]                  # Триггер: запуск при пуше в ветку main
+env:
+  IMAGE_NAME: almuko/jusdb           # Имя Docker-образа (ваш репозиторий на Docker Hub)
+jobs:
+  # ====================== Build & Push Docker Image ======================
+  build-and-push:                         # Джоб для сборки и публикации образа
+    runs-on: ubuntu-latest                # Используем GitHub-hosted runner (Ubuntu VM)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3         # Забираем исходники из репозитория
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2      # Авторизация в Docker Hub
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}   # Логин из GitHub Secrets
+          password: ${{ secrets.DOCKER_PASSWORD }}   # Пароль из GitHub Secrets
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4 # Сборка и публикация Docker образа
+        with:
+          context: .                      # Контекст сборки (текущая директория)
+          push: true                      # Включаем пуш в Docker Hub
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}    
+  # ====================== Deploy to Kubernetes ======================
+  deploy:
+    runs-on: ubuntu-latest                # Второй джоб для деплоя в Kubernetes
+    needs: build-and-push                 # Запуск только после успешного build-and-push
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3         # Снова клонируем репозиторий (нужны yaml манифесты)
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4      # Устанавливаем kubectl
+        with:
+          version: latest
+
+      - name: Setup Kubeconfig
+        shell: bash
+        run: |                            # Настраиваем kubeconfig из GitHub Secrets
+          mkdir -p "$HOME/.kube"
+          cat > "$HOME/.kube/config" <<'EOF'
+          ${{ secrets.KUBECONFIG }}
+          EOF
+
+      - name: Install cert-manager
+        run: |                            # Устанавливаем cert-manager (для TLS)
+            helm repo add jetstack https://charts.jetstack.io
+            helm repo update
+            helm upgrade --install cert-manager jetstack/cert-manager \
+              --namespace cert-manager \
+              --create-namespace \
+              --set installCRDs=true
+
+            # Ждём пока все поды cert-manager станут Ready
+            kubectl rollout status deployment/cert-manager -n cert-manager --timeout=180s
+            kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=180s
+            kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout=180s
+
+
+      - name: Deploy ClusterIssuer (Let's Encrypt)
+        run: kubectl apply --validate=false -f k8s/cluster-issuer.yaml
+        # Подключаем ClusterIssuer для автоматического выпуска сертификатов
+
+      - name: Deploy Postgres (only if not exists)
+        run: |                            # Поднимаем Postgres, если его нет
+          if ! kubectl get statefulset postgres -n default >/dev/null 2>&1; then
+            echo "Postgres not found. Creating..."
+            kubectl apply -f k8s/postgres.yaml
+            kubectl rollout status statefulset/postgres -n default --timeout=180s
+          else
+            echo "✅ Postgres already exists. Skipping creation."
+          fi
+
+      - name: Recreate jusdb-db-secret
+        run: |                            # Обновляем секрет с DATABASE_URL
+          kubectl delete secret jusdb-db-secret -n default --ignore-not-found
+          kubectl create secret generic jusdb-db-secret \
+            --from-literal=DATABASE_URL="postgres://postgres:Zxcvbnm123@postgres:5432/jusdb?sslmode=disable"
+
+      - name: Cleanup old migration job and pods
+        run: |                            # Чистим старый Job миграций и его Pod'ы
+          if kubectl get job jusdb-migrate -n default >/dev/null 2>&1; then
+            echo "🗑 Deleting old migration job..."
+            kubectl delete job jusdb-migrate -n default
+          fi
+          echo "🧹 Cleaning up old migration pods..."
+          for pod in $(kubectl get pods -n default -l job-name=jusdb-migrate -o jsonpath='{.items[*].metadata.name}'); do
+            kubectl delete pod -n default $pod --ignore-not-found || true
+          done
+
+      - name: Run migrations Job
+        run: |                            # Запускаем миграции через Job
+          kubectl apply -f k8s/migrate.yaml
+          echo "⏳ Waiting for migrations to complete..."
+          if ! kubectl wait --for=condition=complete job/jusdb-migrate -n default --timeout=600s; then
+            echo "❌ Migration job did not complete. Showing logs from all pods..."
+            for pod in $(kubectl get pods -n default -l job-name=jusdb-migrate -o jsonpath='{.items[*].metadata.name}'); do
+              echo "🔹 Logs from pod: $pod"
+              kubectl logs -n default $pod || true
+              echo "--------------------------------------"
+            done
+            exit 1
+          fi
+          echo "✅ Migration job completed successfully."
+          kubectl delete job jusdb-migrate -n default --ignore-not-found
+
+      - name: Deploy App (Deployment + Service + Ingress)
+        run: kubectl apply -f k8s/jusdb.yaml
+        # Деплой приложения в кластер (Deployment, Service и Ingress)
+
+      - name: Wait for app rollout
+        run: kubectl rollout status deployment/jusdb -n default --timeout=180s
+        # Ждём, пока деплоймент завершится
+
+      - name: Wait for TLS certificate
+        run: |                            # Ждём пока cert-manager выпустит TLS сертификат
+          echo "⏳ Waiting for TLS certificate jusdb-tls..."
+          kubectl wait --for=condition=Ready certificate/jusdb-tls -n default --timeout=300s || \
+            (echo "❌ TLS certificate was not issued" && kubectl describe certificate jusdb-tls -n default && exit 1)
+
+      - name: Debug jusdb pods if rollout fails
+        if: failure()                     # Если деплой упал — выводим логи
+        run: |
+          kubectl get pods -n default
+          for pod in $(kubectl get pods -n default -l app=jusdb -o jsonpath='{.items[*].metadata.name}'); do
+            echo "Logs from $pod"
+            kubectl logs -n default $pod --tail=50 || true
+            echo "---"
+          done
+
+      - name: Test API health endpoint
+        run: |                            # Проверяем, что API отвечает
+          echo "🌍 Testing API endpoint..."
+          curl -vk --retry 5 --retry-delay 10 https://jusdb.compnet.kz/health | grep '"status":"ok"'
+
+      - name: Show Ingress and endpoints
+        run: |                            # Отладка: выводим ingress, сервисы и pod'ы
+          kubectl get ingress -n default
+          kubectl get svc -n default
+          kubectl get pods -o wide -n default

@@ -4,7 +4,6 @@ CREATE TABLE IF NOT EXISTS roles (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE
 );
-
 -- Пользователи
 CREATE TABLE IF NOT EXISTS users (
     id BIGSERIAL PRIMARY KEY,
@@ -16,14 +15,12 @@ CREATE TABLE IF NOT EXISTS users (
     role_id BIGINT REFERENCES roles(id),
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
-
 -- Города
 CREATE TABLE IF NOT EXISTS cities (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
-
 -- Районы
 CREATE TABLE IF NOT EXISTS districts (
     id BIGSERIAL PRIMARY KEY,
@@ -32,14 +29,12 @@ CREATE TABLE IF NOT EXISTS districts (
     created_at TIMESTAMP NOT NULL DEFAULT now(),
     UNIQUE(city_id, name)
 );
-
 -- Типы недвижимости
 CREATE TABLE IF NOT EXISTS types (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
-
 -- Объявления
 CREATE TABLE IF NOT EXISTS listings (
     id BIGSERIAL PRIMARY KEY,

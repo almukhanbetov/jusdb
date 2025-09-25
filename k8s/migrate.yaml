@@ -1,0 +1,41 @@
+# ====================== Job: миграции ======================
+apiVersion: batch/v1                   # API версия для Job
+kind: Job                               # Ресурс Job
+metadata:
+  name: jusdb-migrate              # Имя Job (kubectl будет искать именно так)
+  namespace: default                    # Namespace, где будет запускаться
+spec:
+  backoffLimit: 3                       # Кол-во попыток перезапуска при ошибке
+  ttlSecondsAfterFinished: 60           # Автоудаление Job через 60 секунд после завершения
+  template:
+    spec:
+      restartPolicy: Never              # Pod выполняется один раз, без перезапуска
+
+      # --- InitContainer: ждём пока Postgres станет доступен ---
+      initContainers:
+        - name: wait-for-postgres       # Имя init-контейнера
+          image: postgres:17-alpine     # Используем официальный образ Postgres
+          command:                      # Команда, которая ждёт доступность БД
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres -p 5432 -U postgres; do
+                echo "⏳ waiting for postgres..."
+                sleep 2
+              done
+              echo "✅ Postgres is up!"
+
+      # --- Основной контейнер: выполняем миграции через goose ---
+      containers:
+        - name: migrate                 # Имя контейнера
+          image: almuko/jusdb:latest  # Твой Docker-образ с goose
+          workingDir: /app              # Рабочая папка внутри контейнера
+          command: ["sh", "-c", "goose -dir ./migrations postgres \"$DATABASE_URL\" up"]
+          # Выполняем goose миграции по строке подключения
+
+          env:                           # Переменные окружения
+            - name: DATABASE_URL         # DATABASE_URL подтягиваем из Kubernetes Secret
+              valueFrom:
+                secretKeyRef:
+                  name: jusdb-db-secret   # Название секрета
+                  key: DATABASE_URL            # Ключ внутри секрета

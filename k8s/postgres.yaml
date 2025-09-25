@@ -1,0 +1,62 @@
+# ====================== Secret ======================
+apiVersion: v1                      # API-версия для Secret
+kind: Secret                        # Ресурс Secret (для хранения паролей и конфигов)
+metadata:
+  name: postgres-secret             # Имя секрета
+  namespace: default                # Namespace (по умолчанию "default")
+type: Opaque                        # Тип секрета — произвольные ключ-значения
+stringData:                         # Поле для хранения строк (kubectl сам преобразует в base64)
+  POSTGRES_USER: postgres           # Логин для БД
+  POSTGRES_PASSWORD: Zxcvbnm123     # Пароль для БД
+  POSTGRES_DB: jusdb           # Имя базы данных
+---
+# ====================== StatefulSet ======================
+apiVersion: apps/v1                 # API для StatefulSet
+kind: StatefulSet                   # StatefulSet — устойчивый набор Pod'ов
+metadata:
+  name: postgres                    # Имя StatefulSet
+  namespace: default                # Namespace
+spec:
+  serviceName: "postgres"           # Headless Service для Pod DNS
+  replicas: 1                       # Количество Pod'ов (1, если без репликации)
+  selector:
+    matchLabels:
+      app: postgres                 # StatefulSet управляет Pod'ами с этой меткой
+  template:                         # Шаблон Pod'а
+    metadata:
+      labels:
+        app: postgres               # Метка для Pod'а
+    spec:
+      containers:
+        - name: postgres            # Имя контейнера
+          image: postgres:17-alpine # Образ PostgreSQL (лёгкий alpine)
+          ports:
+            - containerPort: 5432   # Порт внутри контейнера
+          envFrom:                  # Переменные окружения из секрета
+            - secretRef:
+                name: postgres-secret
+          volumeMounts:             # Подключение тома
+            - name: postgres-data   # Имя PVC (снизу)
+              mountPath: /var/lib/postgresql/data
+              # В этой директории PostgreSQL хранит данные
+  volumeClaimTemplates:             # Шаблон PVC для хранения данных
+    - metadata:
+        name: postgres-data         # Имя PVC
+      spec:
+        accessModes: [ "ReadWriteOnce" ] # Доступ с одного узла
+        resources:
+          requests:
+            storage: 1Gi            # Запрашиваемое хранилище (1ГБ)
+---
+# ====================== Service ======================
+apiVersion: v1                      # API для Service
+kind: Service                       # Сервис для доступа к Pod'ам
+metadata:
+  name: postgres                    # Имя сервиса
+  namespace: default                # Namespace
+spec:
+  selector:
+    app: postgres                   # Сервис будет перенаправлять на Pod'ы с меткой app=postgres
+  ports:
+    - port: 5432                    # Порт сервиса внутри кластера
+      targetPort: 5432              # Порт контейнера внутри Pod'а

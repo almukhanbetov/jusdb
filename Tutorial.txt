@@ -1,0 +1,24 @@
+docker ps 
+docker compose down -v
+docker compose up -d --build
+docker compose logs goose
+docker exec -it jusdb psql -U postgres -d jusdb
+docker compose run --rm goose goose -dir ./migrations postgres "postgres://postgres:Zxcvbnm123:5432/jusbd?sslmode=disable" status
+docker compose down -v
+docker compose up -d --build
+docker compose logs goose
+
+docker exec -it jusdb psql -U postgres -d jusdb -c "\dt"
+
+nano migrate.sh
+
+#!/bin/sh
+set -e
+
+# Установим goose (если нет)
+go install github.com/pressly/goose/v3/cmd/goose@latest
+
+# Запустим миграции
+/go/bin/goose -dir ./migrations postgres "postgres://postgres:Zxcvbnm123@db:5432/jusdb?sslmode=disable" up
+
+chmod +x migrate.sh
